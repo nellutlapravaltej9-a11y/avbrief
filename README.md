@@ -1,6 +1,6 @@
 # AvBrief &mdash; Glass-Cockpit Aviation Weather Utility
 
-**Live Application**: [avbrief.vercel.app](https://avbrief.vercel.app)
+**Live Application**: [avbrief.vercel.app](https://avbrief-the-daily-edge.vercel.app)
 
 AvBrief is a professional glass-cockpit style Electronic Flight Bag (EFB) utility designed for student pilots, dispatchers, and aviation enthusiasts. It decodes complex, raw weather strings (METAR and TAF) into plain English, performs landing calculations, translates raw NOTAMs using simulated AI, and tracks space/micro-weather telemetry to ensure flight safety.
 
