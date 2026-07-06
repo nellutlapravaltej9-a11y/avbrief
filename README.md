@@ -1,8 +1,8 @@
-# SkyBrief &mdash; Glass-Cockpit Aviation Weather Utility
+# AvBrief &mdash; Glass-Cockpit Aviation Weather Utility
 
-**Live Application**: [skybrief-rho.vercel.app](https://skybrief-rho.vercel.app)
+**Live Application**: [avbrief.vercel.app](https://avbrief.vercel.app)
 
-SkyBrief is a professional glass-cockpit style Electronic Flight Bag (EFB) utility designed for student pilots, dispatchers, and aviation enthusiasts. It decodes complex, raw weather strings (METAR and TAF) into plain English, performs landing calculations, translates raw NOTAMs using simulated AI, and tracks space/micro-weather telemetry to ensure flight safety.
+AvBrief is a professional glass-cockpit style Electronic Flight Bag (EFB) utility designed for student pilots, dispatchers, and aviation enthusiasts. It decodes complex, raw weather strings (METAR and TAF) into plain English, performs landing calculations, translates raw NOTAMs using simulated AI, and tracks space/micro-weather telemetry to ensure flight safety.
 
 ---
 
@@ -55,8 +55,8 @@ SkyBrief is a professional glass-cockpit style Electronic Flight Bag (EFB) utili
 To initialize this stack from scratch and configure the file structure, run the following terminal commands:
 ```bash
 # 1. Initialize Git repository
-git init skybrief
-cd skybrief
+git init avbrief
+cd avbrief
 
 # 2. Scaffold Vite + React + TypeScript project non-interactively
 npx -y create-vite@latest ./ --template react-ts
@@ -66,7 +66,7 @@ npm install
 npm install lucide-react recharts
 
 # 4. Initialize Tailwind CSS v4 (configured in index.css)
-# SkyBrief uses the modern, declarative CSS-first Tailwind configuration
+# AvBrief uses the modern, declarative CSS-first Tailwind configuration
 ```
 
 ### Running Locally
@@ -92,7 +92,7 @@ npm run build
 
 ## UI/UX & Design Philosophy
 
-Pilots in the field operate under high-stress conditions, screen glare, and cockpit lighting constraints. To accommodate these requirements, SkyBrief enforces a **glass-cockpit, dark-mode-first aesthetic**:
+Pilots in the field operate under high-stress conditions, screen glare, and cockpit lighting constraints. To accommodate these requirements, AvBrief enforces a **glass-cockpit, dark-mode-first aesthetic**:
 * **Backgrounds**: Obsidian `#0A0F1E` and deep slate slate-900 `#1E293B` to reduce eye strain and screen glare during night flights.
 * **Accents**: High-contrast, sharp electric blue `#38BDF8`, cyan, and emerald green `#22C55E` parameters to draw focal attention to flight values.
 * **Layouts**: Modular card components resembling modern primary flight displays (PFDs) and Electronic Flight Bags (EFBs), grouped clearly into columns.
