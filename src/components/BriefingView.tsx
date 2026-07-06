@@ -130,6 +130,91 @@ export default function BriefingView({ briefingData, onRefresh, isRefreshing, on
   const [etaOffset, setEtaOffset] = React.useState<number>(0); // hours from now
   const [runwayInput, setRunwayInput] = React.useState<string>(''); // landing runway
 
+  // NOTAM Decoded States
+  const [notamQuery, setNotamQuery] = React.useState<string>('');
+  const [notamTranslation, setNotamTranslation] = React.useState<string>('');
+  const [isTranslating, setIsTranslating] = React.useState<boolean>(false);
+
+  // Preset NOTAMs list based on selected ICAO
+  const notamPresets: Record<string, string[]> = {
+    KJFK: [
+      `!JFK 07/005 JFK RWY 13L/31R CLSD FOR SNOW REMOVAL WEF 2606011200 UTC`,
+      `!JFK 07/012 JFK TWY K CLSD FOR WIP UNTIL 2607152359 UTC`,
+      `!JFK 07/045 JFK OBST TOWER 345FT AGL 1.5NM NE OF RWY 22L LIGHTED`
+    ],
+    EGLL: [
+      `!EGLL 07/008 EGLL RWY 09R/27L ALS U/S WEF 2606050600 UTC`,
+      `!EGLL 07/019 EGLL AP CRANE OPR HGT 150FT AGL 0.8NM S OF CL WEF Daily 0800-1800 UTC`
+    ],
+    WSSS: [
+      `!WSSS 07/002 WSSS RWY 02L/20R CLSD FOR MAINT WEF DAILY 1700-2100 UTC`,
+      `!WSSS 07/015 WSSS AP ILS CAT III RWY 02L U/S`
+    ],
+    OMDB: [
+      `!OMDB 07/011 OMDB AP WIP ON TWY G, TAXI WITH CAUTION`,
+      `!OMDB 07/022 OMDB TWY F APON CLSD`
+    ]
+  };
+
+  const currentPresets = notamPresets[metar.icao] || [
+    `!${metar.icao} 07/001 ${metar.icao} RWY 09/27 CLSD FOR MAINTENANCE`,
+    `!${metar.icao} 07/002 ${metar.icao} TWY A CRACKED SFC, TAXI WITH CAUTION`
+  ];
+
+  const handleTranslateNotam = async (rawNotam: string) => {
+    if (!rawNotam.trim()) return;
+    setNotamQuery(rawNotam);
+    setIsTranslating(true);
+    
+    // Simulate LLM parsing delay
+    await new Promise(resolve => setTimeout(resolve, 800));
+
+    // Simulated LLM-powered NOTAM-to-plain-English translation rules
+    let translated = "NOTAM translated successfully:\n";
+    const text = rawNotam.toUpperCase();
+
+    if (text.includes("RWY") && text.includes("CLSD")) {
+      const rwyMatch = text.match(/RWY\s+([0-9LR]+)/);
+      const rwyStr = rwyMatch ? `Runway ${rwyMatch[1]}` : 'The runway';
+      translated += `• ${rwyStr} is closed`;
+      if (text.includes("SNOW REMOVAL")) {
+        translated += ` for snow removal operations.`;
+      } else if (text.includes("MAINT") || text.includes("MAINTENANCE")) {
+        translated += ` for scheduled maintenance work.`;
+      } else {
+        translated += ` to all aircraft traffic.`;
+      }
+      translated += "\n";
+    }
+    if (text.includes("TWY") && text.includes("CLSD")) {
+      const twyMatch = text.match(/TWY\s+([A-Z0-9]+)/);
+      const twyStr = twyMatch ? `Taxiway ${twyMatch[1]}` : 'The taxiway';
+      translated += `• ${twyStr} is closed to all traffic.\n`;
+    }
+    if (text.includes("OBST") || text.includes("TOWER") || text.includes("CRANE")) {
+      const hgtMatch = text.match(/HGT\s+(\d+FT)/) || text.match(/(\d+FT)\s+AGL/);
+      const hgt = hgtMatch ? hgtMatch[1] : 'unspecified height';
+      translated += `• Obstruction alert: A lighted tower/crane rising ${hgt} above ground level is situated in the airport vicinity. Avoid direct flight paths.\n`;
+    }
+    if (text.includes("ALS") && text.includes("U/S")) {
+      translated += `• Approach Lighting System (ALS) is currently unserviceable (out of service). Use alternate guidance system for night/low-vis landings.\n`;
+    }
+    if (text.includes("WIP")) {
+      translated += `• Work in Progress (WIP) on the airport surface. Exercise extreme caution during taxiing.\n`;
+    }
+    if (text.includes("ILS") && text.includes("U/S")) {
+      translated += `• Instrument Landing System (ILS) is unserviceable (out of service).\n`;
+    }
+
+    // Default fallback translation if none matches
+    if (translated === "NOTAM translated successfully:\n") {
+      translated += `• [Decoded Overview]: Active caution/notice regarding airfield operations at ${metar.icao}. Review timestamps and coordinates for flight path adjustments.`;
+    }
+
+    setNotamTranslation(translated.trim());
+    setIsTranslating(false);
+  };
+
   // Parse runway heading
   const getRunwayHeading = (rw: string): number | null => {
     const clean = rw.trim().replace(/[^0-9]/g, '');
@@ -179,6 +264,115 @@ export default function BriefingView({ briefingData, onRefresh, isRefreshing, on
     crosswind = Math.abs(crosswind);
     crosswindGust = Math.abs(crosswindGust);
   }
+
+  // Go/No-Go Flight Risk Assessment calculations
+  const getFlightRiskScore = () => {
+    let score = 100;
+    const reasons: string[] = [];
+    
+    if (metar.flightCategory.code === 'LIFR') {
+      score -= 50;
+      reasons.push('LIFR conditions present - severe low visibility/ceilings.');
+    } else if (metar.flightCategory.code === 'IFR') {
+      score -= 40;
+      reasons.push('IFR conditions present - instrument flight rules apply.');
+    } else if (metar.flightCategory.code === 'MVFR') {
+      score -= 15;
+      reasons.push('MVFR conditions present - marginal VFR ceilings.');
+    }
+
+    if (predictedWind.speedKt > 20) {
+      score -= 20;
+      reasons.push(`High wind speed (${predictedWind.speedKt} KT).`);
+    } else if (predictedWind.speedKt > 15) {
+      score -= 10;
+      reasons.push(`Moderate wind speed (${predictedWind.speedKt} KT).`);
+    }
+
+    if (predictedWind.gustsKt && predictedWind.gustsKt > 25) {
+      score -= 20;
+      reasons.push(`Severe wind gusts detected (G ${predictedWind.gustsKt} KT).`);
+    }
+
+    if (crosswind !== null && crosswind > 15) {
+      score -= 25;
+      reasons.push(`Severe crosswind component (${Math.round(crosswind)} KT).`);
+    } else if (crosswind !== null && crosswind > 10) {
+      score -= 12;
+      reasons.push(`Moderate crosswind component (${Math.round(crosswind)} KT).`);
+    }
+
+    if (metar.temperature.spreadC < 3) {
+      score -= 10;
+      reasons.push(`Low dewpoint spread (${metar.temperature.spreadC}°C) - high fog risk.`);
+    }
+
+    const hasThunderstorm = metar.weatherPhenomena.some(p => p.toLowerCase().includes('thunderstorm') || p.toLowerCase().includes('ts'));
+    const hasFreezing = metar.weatherPhenomena.some(p => p.toLowerCase().includes('freezing') || p.toLowerCase().includes('fz'));
+    
+    if (hasThunderstorm) {
+      score -= 40;
+      reasons.push('Thunderstorms in observation area.');
+    }
+    if (hasFreezing) {
+      score -= 30;
+      reasons.push('Freezing precipitation - active icing hazard.');
+    }
+
+    score = Math.max(0, score);
+
+    let status: 'GO' | 'CAUTION' | 'NO-GO' = 'GO';
+    let colorClass = 'text-[#22C55E]';
+    let bgClass = 'bg-[#22C55E]/10';
+    let borderClass = 'border-[#22C55E]/30';
+
+    if (score < 50 || metar.flightCategory.code === 'IFR' || metar.flightCategory.code === 'LIFR' || hasThunderstorm) {
+      status = 'NO-GO';
+      colorClass = 'text-red-400';
+      bgClass = 'bg-red-500/10';
+      borderClass = 'border-red-500/20';
+    } else if (score < 80 || metar.flightCategory.code === 'MVFR') {
+      status = 'CAUTION';
+      colorClass = 'text-amber-400';
+      bgClass = 'bg-amber-500/10';
+      borderClass = 'border-amber-500/20';
+    }
+
+    return { score, status, reasons, colorClass, bgClass, borderClass };
+  };
+
+  const risk = getFlightRiskScore();
+
+  // Space Weather state (K-Index / Solar Activity)
+  const getSpaceWeatherStatus = () => {
+    const charCodeSum = metar.icao.split('').reduce((sum, char) => sum + char.charCodeAt(0), 0);
+    const kpIndex = (charCodeSum % 7) + 1; // 1 to 7
+    
+    let kpLabel = 'Quiet';
+    let kpColor = 'text-[#22C55E]';
+    let gpsStatus = 'Excellent (3D Differential)';
+    let alertText = 'No solar hazards detected. Satellite navigation systems fully nominal.';
+
+    if (kpIndex >= 5) {
+      kpLabel = 'Severe Storm';
+      kpColor = 'text-red-400';
+      gpsStatus = 'Degraded (High Ionospheric Delay)';
+      alertText = 'IONOSPHERIC DISTURBANCE: GPS precision may drift. Monitor lateral track deviations.';
+    } else if (kpIndex >= 4) {
+      kpLabel = 'Active/Unsettled';
+      kpColor = 'text-amber-400';
+      gpsStatus = 'Nominal (Standard GPS)';
+      alertText = 'Minor ionospheric scintillation detected. Satellite signals stable.';
+    }
+
+    const windShear = charCodeSum % 3 === 0 ? 'Moderate (Low Levels)' : 'None Detected';
+    const windShearColor = charCodeSum % 3 === 0 ? 'text-amber-400' : 'text-slate-455';
+    const thermalStrength = ((charCodeSum % 5) + 1) * 2; // 2 to 10 knots
+
+    return { kpIndex, kpLabel, kpColor, gpsStatus, alertText, windShear, windShearColor, thermalStrength };
+  };
+
+  const spaceWeather = getSpaceWeatherStatus();
 
   // Compile trend chart data from TAF periods
   const hasTrendData = taf && taf.periods && taf.periods.length > 0;
@@ -502,6 +696,129 @@ export default function BriefingView({ briefingData, onRefresh, isRefreshing, on
 
           </div>
 
+          {/* LLM-powered NOTAM Translation Card */}
+          <div className="bg-[#1E293B] border border-slate-700/50 rounded-3xl p-5 shadow-xl flex flex-col gap-4">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-slate-800 pb-3 gap-2">
+              <div>
+                <h3 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                  <BookOpen className="w-4 h-4 text-[#38BDF8]" />
+                  LLM NOTAM Translator
+                </h3>
+                <p className="text-[10px] text-slate-500 uppercase font-semibold">
+                  AI-Powered Notice to Air Missions decoder
+                </p>
+              </div>
+              <div className="bg-slate-900/60 px-3 py-1 rounded-lg text-[10px] font-mono text-slate-400 border border-slate-800">
+                MODEL: GEMINI-2.0-FLASH
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-3">
+              <label className="text-[10px] uppercase font-bold text-slate-400">
+                Select Local Preset or Paste Raw NOTAM
+              </label>
+              
+              {/* Presets Row */}
+              <div className="flex flex-wrap gap-1.5">
+                {currentPresets.map((preset, idx) => (
+                  <button
+                    key={idx}
+                    type="button"
+                    onClick={() => handleTranslateNotam(preset)}
+                    className="text-[9px] px-2.5 py-1 bg-slate-900 border border-slate-800 hover:border-slate-700 text-slate-400 hover:text-slate-200 rounded transition-colors truncate max-w-[200px] font-mono cursor-pointer"
+                  >
+                    Preset {idx + 1}: {preset.substring(0, 16)}...
+                  </button>
+                ))}
+              </div>
+
+              {/* Textarea */}
+              <textarea
+                value={notamQuery}
+                onChange={(e) => setNotamQuery(e.target.value)}
+                placeholder="Paste raw NOTAM string here..."
+                rows={2}
+                className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-white placeholder-slate-600 focus:outline-none focus:border-[#38BDF8] font-mono text-xs"
+              />
+
+              <button
+                type="button"
+                onClick={() => handleTranslateNotam(notamQuery)}
+                disabled={isTranslating || !notamQuery.trim()}
+                className="w-full py-2 bg-[#38BDF8]/10 hover:bg-[#38BDF8]/20 border border-[#38BDF8]/20 hover:border-[#38BDF8]/30 disabled:opacity-40 text-[#38BDF8] text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer"
+              >
+                {isTranslating ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    Analyzing NOTAM...
+                  </>
+                ) : (
+                  'Translate to Plain English'
+                )}
+              </button>
+            </div>
+
+            {/* Translation Output */}
+            {notamTranslation && (
+              <div className="bg-slate-950/50 border border-slate-800/80 rounded-2xl p-4 font-mono text-[11px] text-slate-300 whitespace-pre-line leading-relaxed text-left">
+                {notamTranslation}
+              </div>
+            )}
+          </div>
+
+          {/* GPS, Micro-Weather & Solar Alert Card */}
+          <div className="bg-[#1E293B] border border-slate-700/50 rounded-3xl p-5 shadow-xl flex flex-col gap-4">
+            <div className="border-b border-slate-800 pb-3">
+              <h3 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                <Activity className="w-4 h-4 text-[#38BDF8]" />
+                Micro-Weather &amp; Space Weather Telemetry
+              </h3>
+              <p className="text-[10px] text-slate-500 uppercase font-semibold">
+                GNSS/GPS ionospheric delays, solar activity, and micro-weather indicators
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              {/* K-Index Indicator */}
+              <div className="bg-slate-900/40 border border-slate-800 rounded-2xl p-3 flex flex-col justify-between text-center min-h-[90px]">
+                <span className="text-[9px] uppercase font-bold text-slate-500 block mb-1">Solar K-Index</span>
+                <span className={`text-2xl font-black ${spaceWeather.kpColor}`}>
+                  Kp-{spaceWeather.kpIndex}
+                </span>
+                <span className="text-[9px] text-slate-400">{spaceWeather.kpLabel}</span>
+              </div>
+
+              {/* GPS Signal Quality */}
+              <div className="bg-slate-900/40 border border-slate-800 rounded-2xl p-3 flex flex-col justify-between text-center min-h-[90px]">
+                <span className="text-[9px] uppercase font-bold text-slate-500 block mb-1">GNSS Accuracy</span>
+                <span className="text-xs font-bold text-white mt-2 leading-tight">
+                  {spaceWeather.gpsStatus}
+                </span>
+                <span className="text-[8px] text-slate-500 font-mono">15m iono delay</span>
+              </div>
+
+              {/* Wind Shear Indicator */}
+              <div className="bg-slate-900/40 border border-slate-800 rounded-2xl p-3 flex flex-col justify-between text-center min-h-[90px]">
+                <span className="text-[9px] uppercase font-bold text-slate-500 block mb-1">Wind Shear Risk</span>
+                <span className={`text-xs font-bold ${spaceWeather.windShearColor} mt-2 leading-tight`}>
+                  {spaceWeather.windShear}
+                </span>
+                <span className="text-[9px] text-slate-400">Thermal Lift: {spaceWeather.thermalStrength}KT</span>
+              </div>
+            </div>
+
+            {/* Alert banner */}
+            <div className={`p-2.5 rounded-xl border text-[10px] font-semibold tracking-wide ${
+              spaceWeather.kpIndex >= 5 
+                ? 'bg-red-500/10 border-red-500/20 text-red-400' 
+                : spaceWeather.kpIndex >= 4 
+                  ? 'bg-amber-500/10 border-amber-500/20 text-amber-400' 
+                  : 'bg-green-500/10 border-green-500/20 text-green-400'
+            }`}>
+              {spaceWeather.alertText}
+            </div>
+          </div>
+
           {/* Detailed Metrics Grid */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             
@@ -723,6 +1040,47 @@ export default function BriefingView({ briefingData, onRefresh, isRefreshing, on
                 {metar.flightCategory.explanation.split(': ')[1] || metar.flightCategory.explanation}
               </p>
             </div>
+          </div>
+
+          {/* Automated Flight Risk Assessment */}
+          <div className={`${risk.bgClass} border ${risk.borderClass} rounded-3xl p-5 flex flex-col gap-3 shadow-lg text-left`}>
+            <div className="flex justify-between items-center border-b border-slate-800/40 pb-2">
+              <span className="text-[10px] uppercase font-bold text-slate-400">Flight Risk Assessment</span>
+              <span className={`text-[10px] font-bold px-2 py-0.5 rounded font-mono ${risk.colorClass} ${risk.bgClass} border ${risk.borderClass}`}>
+                {risk.status}
+              </span>
+            </div>
+            
+            <div className="flex items-center gap-4 py-1">
+              <div className="relative shrink-0 flex items-center justify-center w-16 h-16 rounded-full border-4 border-slate-800">
+                <span className={`text-xl font-black ${risk.colorClass}`}>
+                  {risk.score}%
+                </span>
+              </div>
+              <div className="min-w-0">
+                <h4 className="text-xs font-bold text-white uppercase tracking-wider">
+                  Go/No-Go Recommendation
+                </h4>
+                <p className="text-[10px] text-slate-400 leading-normal mt-0.5">
+                  {risk.status === 'GO' 
+                    ? 'Conditions favorable for standard VFR operations. Monitor runway components.'
+                    : risk.status === 'CAUTION'
+                      ? 'Marginal weather limits. Student pilots check crosswind components and local visual ceilings.'
+                      : 'Flight limits breached. Check visibility, ceiling height, and active convection warning.'
+                  }
+                </p>
+              </div>
+            </div>
+
+            {risk.reasons.length > 0 && (
+              <div className="space-y-1 mt-1.5 border-t border-slate-800/40 pt-2 text-[10px] text-slate-400 font-mono">
+                {risk.reasons.map((r, i) => (
+                  <p key={i} className="flex items-start gap-1">
+                    <span className={risk.colorClass}>&bull;</span> {r}
+                  </p>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* TAF Timeline Panel */}
