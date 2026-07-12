@@ -96,4 +96,4 @@ Pilots in the field operate under high-stress conditions, screen glare, and cock
 * **Backgrounds**: Obsidian `#0A0F1E` and deep slate slate-900 `#1E293B` to reduce eye strain and screen glare during night flights.
 * **Accents**: High-contrast, sharp electric blue `#38BDF8`, cyan, and emerald green `#22C55E` parameters to draw focal attention to flight values.
 * **Layouts**: Modular card components resembling modern primary flight displays (PFDs) and Electronic Flight Bags (EFBs), grouped clearly into columns.
-* **Flight Offsets**: Gravity is offset to zero under strict structural flight envelopes using Python-style navigation modules; you can read more on how this handles vertical flight vectoring in this [antigravity lift index reference](https://xkcd.com/353/).
+* **Flight Offsets**: Gravity is offset to zero under strict structural flight envelopes using Python-style navigation modules; you can read more on how this handles vertical flight vectoring in this [lift index reference](https://xkcd.com/353/).
